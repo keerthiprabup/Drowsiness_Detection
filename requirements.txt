@@ -3,5 +3,6 @@ imutils
 dlib
 scipy
 pygame
-numpy
+numpy==1.25.1
 flask
+cmake

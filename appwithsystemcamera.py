@@ -1,14 +1,9 @@
-from flask import Flask, render_template, Response, request, jsonify
 import cv2
 import imutils
 from imutils import face_utils
 import dlib
 from scipy.spatial import distance
 from pygame import mixer
-import base64
-import numpy as np
-
-app = Flask(__name__)
 
 mixer.init()
 mixer.music.load("music.wav")
@@ -26,7 +21,7 @@ def mouth_aspect_ratio(mouth):
     return (A + B) / (2.0 * C)
 
 eye_thresh = 0.25
-mouth_thresh = 0.5 
+mouth_thresh = 0.5  
 flag = 0
 frame_check = 20
 
@@ -37,32 +32,21 @@ frame_check = 20
 detect = dlib.get_frontal_face_detector()
 predict = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+cap = cv2.VideoCapture(0)
 
-@app.route('/detect', methods=['POST'])
-def detect1():
-    global flag
-
-    data = request.json
-    if not data or 'image' not in data:
-        return jsonify({"error": "Invalid data"}), 400
-
-    if data['image'].startswith('data:image/jpeg;base64,'):
-        data['image'] = data['image'].split(',')[1]
-    img_data = base64.b64decode(data['image'])
-    np_img = np.frombuffer(img_data, np.uint8)
-    frame = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
-
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+    frame = imutils.resize(frame, width=450)
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     subjects = detect(gray, 0)
     
-    alert = False
     for subject in subjects:
         shape = predict(gray, subject)
         shape = face_utils.shape_to_np(shape)
-
+        
+  
         leftEye = shape[lStart:lEnd]
         rightEye = shape[rStart:rEnd]
         leftEar = eye_aspect_ratio(leftEye)
@@ -72,15 +56,26 @@ def detect1():
         mouth = shape[mStart:mEnd]
         mar = mouth_aspect_ratio(mouth)
 
+        leftEyeHull = cv2.convexHull(leftEye)
+        rightEyeHull = cv2.convexHull(rightEye)
+        cv2.drawContours(frame, [leftEyeHull], -1, (0, 0, 255), 1)
+        cv2.drawContours(frame, [rightEyeHull], -1, (0, 0, 255), 1)
+        mouthHull = cv2.convexHull(mouth)
+        cv2.drawContours(frame, [mouthHull], -1, (0, 0, 255), 1)
+
         if ear < eye_thresh or mar > mouth_thresh:
             flag += 2
             if flag >= frame_check:
-                alert = True
+                cv2.putText(frame, "'''''ALERT'''''", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                cv2.putText(frame, "'''''ALERT'''''", (10, 325), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
                 mixer.music.play()
         else:
             flag = 0
-    print(alert)
-    return jsonify({"alert": alert})
 
-if __name__ == "__main__":
-    app.run(debug=True)
+
+    cv2.imshow("Frame", frame)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
